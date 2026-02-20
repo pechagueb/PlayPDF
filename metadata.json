@@ -1,0 +1,5 @@
+{
+  "name": "PlayPDF",
+  "description": "Convert PDF guitar tabs and music scores into playable MIDI audio using Gemini AI.",
+  "requestFramePermissions": []
+}
