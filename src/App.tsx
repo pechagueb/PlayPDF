@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Upload, Play, Square, Music, FileText, Loader2, Volume2, Guitar } from 'lucide-react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import Soundfont from 'soundfont-player';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -32,6 +32,8 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isSwapped, setIsSwapped] = useState(false);
+  const [tempo, setTempo] = useState(120);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const playerRef = useRef<any>(null);
@@ -68,15 +70,28 @@ export default function App() {
   const processFile = async () => {
     if (!file || pdfImages.length === 0) return;
     setIsProcessing(true);
+    setAnalysisProgress(0);
     setError(null);
+    
+    // Simulate progress
+    const progressInterval = setInterval(() => {
+      setAnalysisProgress(prev => {
+        if (prev >= 90) return prev;
+        return prev + Math.random() * 10;
+      });
+    }, 500);
+
     try {
       const parsedScore = await parseScoreFromImages(pdfImages);
       setScore(parsedScore);
+      setTempo(parsedScore.bpm || 120);
+      setAnalysisProgress(100);
     } catch (err: any) {
       console.error(err);
       setError('Failed to process PDF. Please try again.');
     } finally {
-      setIsProcessing(false);
+      clearInterval(progressInterval);
+      setTimeout(() => setIsProcessing(false), 500);
     }
   };
 
@@ -106,7 +121,7 @@ export default function App() {
       const player = await Soundfont.instrument(audioContextRef.current, instrument);
       playerRef.current = player;
 
-      const beatDuration = 60 / score.bpm;
+      const beatDuration = 60 / tempo;
       
       score.notes.forEach((note) => {
         const timeout = setTimeout(() => {
@@ -156,38 +171,55 @@ export default function App() {
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3 lg:gap-6 w-full sm:w-auto">
-          {score && (
-            <div className="flex items-center gap-4 bg-slate-100 px-4 py-2 rounded-2xl border border-slate-200">
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase font-bold text-slate-400">Tempo</span>
-                <span className="text-xs font-mono font-bold">{score.bpm} BPM</span>
+          <div className="flex items-center gap-4 bg-slate-100 px-4 py-2 rounded-2xl border border-slate-200">
+            <button className="flex items-center gap-2 px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-[10px] font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm shrink-0">
+              <Volume2 className="w-3 h-3" />
+              TEMPO
+            </button>
+            <div className="flex flex-col min-w-[100px]">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[9px] uppercase font-bold text-slate-400">Setting</span>
+                <span className="text-xs font-mono font-bold text-indigo-600">{tempo} BPM</span>
               </div>
-              <div className="w-px h-6 bg-slate-200" />
-              <div className="flex flex-col">
-                <span className="text-[9px] uppercase font-bold text-slate-400">Status</span>
-                <span className={cn(
-                  "text-xs font-bold flex items-center gap-1.5",
-                  isPlaying ? "text-emerald-600" : "text-slate-500"
-                )}>
-                  <div className={cn("w-1.5 h-1.5 rounded-full", isPlaying ? "bg-emerald-500 animate-pulse" : "bg-slate-300")} />
-                  {isPlaying ? 'PLAYING' : 'READY'}
-                </span>
-              </div>
+              <input 
+                type="range" 
+                min="60" 
+                max="180" 
+                value={tempo} 
+                onChange={(e) => setTempo(parseInt(e.target.value))}
+                className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+              />
             </div>
-          )}
+            <div className="w-px h-8 bg-slate-200" />
+            <div className="flex flex-col">
+              <span className="text-[9px] uppercase font-bold text-slate-400">Status</span>
+              <span className={cn(
+                "text-xs font-bold flex items-center gap-1.5",
+                isPlaying ? "text-emerald-600" : (score ? "text-slate-500" : "text-slate-300")
+              )}>
+                <div className={cn("w-1.5 h-1.5 rounded-full", isPlaying ? "bg-emerald-500 animate-pulse" : (score ? "bg-slate-400" : "bg-slate-200"))} />
+                {isPlaying ? 'PLAYING' : (score ? 'READY' : 'IDLE')}
+              </span>
+            </div>
+          </div>
 
           <div className="flex items-center gap-2">
-            <button 
+            <motion.button 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
               onClick={() => setIsSwapped(!isSwapped)}
-              className="hidden lg:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+              className="hidden lg:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
               title="Swap Panels"
             >
-              <div className="flex items-center -space-x-1">
+              <motion.div 
+                animate={{ rotate: isSwapped ? 180 : 0 }}
+                className="flex items-center -space-x-1"
+              >
                 <div className="w-3 h-3 border border-slate-400 rounded-sm bg-slate-100" />
                 <div className="w-3 h-3 border border-slate-400 rounded-sm bg-indigo-100" />
-              </div>
+              </motion.div>
               Swap
-            </button>
+            </motion.button>
             
             <label className="cursor-pointer group">
               <div className="bg-white border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 px-4 lg:px-6 py-2 rounded-2xl transition-all flex items-center gap-2">
@@ -203,9 +235,56 @@ export default function App() {
       </header>
 
       <main className={cn(
-        "flex-1 flex flex-col lg:flex-row overflow-hidden",
+        "flex-1 flex flex-col lg:flex-row overflow-hidden relative",
         isSwapped && "lg:flex-row-reverse"
       )}>
+        {/* Progress Overlay */}
+        <AnimatePresence>
+          {isProcessing && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-x-0 top-0 z-[100] bg-white/90 backdrop-blur-md flex items-start justify-center p-4 lg:p-8 border-b border-indigo-100 shadow-xl"
+            >
+              <div className="max-w-2xl w-full flex flex-col lg:flex-row items-center gap-6 lg:gap-12">
+                <div className="relative w-16 h-16 shrink-0">
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 border-4 border-indigo-100 rounded-full"
+                  />
+                  <motion.div 
+                    animate={{ rotate: 360 }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                    className="absolute inset-0 border-4 border-t-indigo-600 rounded-full"
+                  />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <Music className="w-6 h-6 text-indigo-600" />
+                  </div>
+                </div>
+                
+                <div className="flex-1 w-full space-y-3">
+                  <div className="flex justify-between items-end">
+                    <div className="text-left">
+                      <h2 className="text-lg font-bold text-slate-900 leading-none mb-1">AI Analysis in Progress</h2>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400">Transcribing notes & timing</p>
+                    </div>
+                    <span className="text-xl font-mono font-bold text-indigo-600">{Math.round(analysisProgress)}%</span>
+                  </div>
+
+                  <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${analysisProgress}%` }}
+                      className="absolute inset-y-0 left-0 bg-indigo-600 shadow-[0_0_15px_rgba(79,70,229,0.4)]"
+                    />
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* PDF Viewer */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 bg-slate-200/30 border-b lg:border-b-0 lg:border-r border-slate-200 order-2 lg:order-none">
           <div className="max-w-4xl mx-auto space-y-4 lg:space-y-8">
