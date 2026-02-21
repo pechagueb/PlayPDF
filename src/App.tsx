@@ -24,12 +24,14 @@ const INSTRUMENTS: { label: string; value: InstrumentName; icon: React.ReactNode
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
+  const [pdfImages, setPdfImages] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [score, setScore] = useState<Score | null>(null);
   const [instrument, setInstrument] = useState<InstrumentName>('acoustic_guitar_nylon');
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [isSwapped, setIsSwapped] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const playerRef = useRef<any>(null);
@@ -44,23 +46,31 @@ export default function App() {
     };
   }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile && selectedFile.type === 'application/pdf') {
       setFile(selectedFile);
+      setScore(null);
+      setPdfImages([]);
       setError(null);
+      
+      try {
+        const images = await pdfToImages(selectedFile);
+        setPdfImages(images);
+      } catch (err) {
+        setError('Failed to load PDF preview.');
+      }
     } else {
       setError('Please upload a valid PDF file.');
     }
   };
 
   const processFile = async () => {
-    if (!file) return;
+    if (!file || pdfImages.length === 0) return;
     setIsProcessing(true);
     setError(null);
     try {
-      const images = await pdfToImages(file);
-      const parsedScore = await parseScoreFromImages(images);
+      const parsedScore = await parseScoreFromImages(pdfImages);
       setScore(parsedScore);
     } catch (err: any) {
       console.error(err);
@@ -132,184 +142,242 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-[#E4E3E0] text-[#141414] font-sans selection:bg-[#141414] selection:text-[#E4E3E0]">
+    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
       {/* Header */}
-      <header className="border-b border-[#141414] p-6 flex justify-between items-center">
-        <div>
-          <h1 className="font-serif italic text-2xl tracking-tight">TabReader AI</h1>
-          <p className="text-[11px] uppercase tracking-widest opacity-50 font-mono">PDF to MIDI Transcription Engine</p>
+      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 px-4 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center sticky top-0 z-50 gap-4">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200 shrink-0">
+            <Music className="text-white w-6 h-6" />
+          </div>
+          <div>
+            <h1 className="font-bold text-xl tracking-tight text-slate-900">PlayPDF</h1>
+            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-semibold">AI Music Transcription</p>
+          </div>
         </div>
-        <div className="flex gap-4 items-center">
+
+        <div className="flex flex-wrap items-center justify-center gap-3 lg:gap-6 w-full sm:w-auto">
           {score && (
-            <div className="flex items-center gap-2 px-3 py-1 border border-[#141414] rounded-full text-xs font-mono">
-              <div className={cn("w-2 h-2 rounded-full", isPlaying ? "bg-emerald-500 animate-pulse" : "bg-red-500")} />
-              {isPlaying ? 'PLAYING' : 'IDLE'}
+            <div className="flex items-center gap-4 bg-slate-100 px-4 py-2 rounded-2xl border border-slate-200">
+              <div className="flex flex-col">
+                <span className="text-[9px] uppercase font-bold text-slate-400">Tempo</span>
+                <span className="text-xs font-mono font-bold">{score.bpm} BPM</span>
+              </div>
+              <div className="w-px h-6 bg-slate-200" />
+              <div className="flex flex-col">
+                <span className="text-[9px] uppercase font-bold text-slate-400">Status</span>
+                <span className={cn(
+                  "text-xs font-bold flex items-center gap-1.5",
+                  isPlaying ? "text-emerald-600" : "text-slate-500"
+                )}>
+                  <div className={cn("w-1.5 h-1.5 rounded-full", isPlaying ? "bg-emerald-500 animate-pulse" : "bg-slate-300")} />
+                  {isPlaying ? 'PLAYING' : 'READY'}
+                </span>
+              </div>
             </div>
           )}
+
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setIsSwapped(!isSwapped)}
+              className="hidden lg:flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+              title="Swap Panels"
+            >
+              <div className="flex items-center -space-x-1">
+                <div className="w-3 h-3 border border-slate-400 rounded-sm bg-slate-100" />
+                <div className="w-3 h-3 border border-slate-400 rounded-sm bg-indigo-100" />
+              </div>
+              Swap
+            </button>
+            
+            <label className="cursor-pointer group">
+              <div className="bg-white border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50 px-4 lg:px-6 py-2 rounded-2xl transition-all flex items-center gap-2">
+                <Upload className="w-4 h-4 text-slate-400 group-hover:text-indigo-500" />
+                <span className="text-sm font-semibold text-slate-600 group-hover:text-indigo-600 truncate max-w-[120px] lg:max-w-none">
+                  {file ? file.name : 'Upload PDF'}
+                </span>
+              </div>
+              <input type="file" className="hidden" accept=".pdf" onChange={handleFileChange} />
+            </label>
+          </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto p-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Upload & Controls */}
-        <div className="lg:col-span-4 space-y-8">
-          <section className="border border-[#141414] p-6 bg-white/50 backdrop-blur-sm">
-            <h2 className="font-serif italic text-lg mb-4">01. Source Material</h2>
-            <div className="space-y-4">
-              <label className="block">
-                <div className={cn(
-                  "border-2 border-dashed border-[#141414]/20 rounded-lg p-8 flex flex-col items-center justify-center cursor-pointer transition-all hover:border-[#141414]/50",
-                  file && "border-solid border-[#141414] bg-white"
-                )}>
-                  <Upload className="w-8 h-8 mb-2 opacity-50" />
-                  <span className="text-sm font-medium">{file ? file.name : 'Choose PDF Tab/Score'}</span>
-                  <span className="text-[10px] uppercase opacity-40 mt-1">Max 10MB • PDF Only</span>
-                  <input type="file" className="hidden" accept=".pdf" onChange={handleFileChange} />
+      <main className={cn(
+        "flex-1 flex flex-col lg:flex-row overflow-hidden",
+        isSwapped && "lg:flex-row-reverse"
+      )}>
+        {/* PDF Viewer */}
+        <div className="flex-1 overflow-y-auto p-4 lg:p-8 bg-slate-200/30 border-b lg:border-b-0 lg:border-r border-slate-200 order-2 lg:order-none">
+          <div className="max-w-4xl mx-auto space-y-4 lg:space-y-8">
+            {pdfImages.length > 0 ? (
+              pdfImages.map((img, idx) => (
+                <div key={idx} className="bg-white rounded-2xl lg:rounded-3xl shadow-xl shadow-slate-200/50 overflow-hidden border border-slate-200">
+                  <div className="bg-slate-50 px-4 lg:px-6 py-2 border-b border-slate-100 flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Page {idx + 1}</span>
+                  </div>
+                  <img src={`data:image/png;base64,${img}`} alt={`Page ${idx + 1}`} className="w-full h-auto" />
                 </div>
-              </label>
-              
-              <button
-                onClick={processFile}
-                disabled={!file || isProcessing}
-                className="w-full py-3 bg-[#141414] text-[#E4E3E0] font-mono text-sm uppercase tracking-widest disabled:opacity-30 disabled:cursor-not-allowed hover:invert transition-all flex items-center justify-center gap-2"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Analyzing with AI...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="w-4 h-4" />
-                    Process Score
-                  </>
-                )}
-              </button>
-            </div>
-            {error && <p className="text-red-500 text-[10px] mt-2 font-mono uppercase">{error}</p>}
-          </section>
+              ))
+            ) : (
+              <div className="h-[40vh] lg:h-[80vh] flex flex-col items-center justify-center text-slate-400 border-4 border-dashed border-slate-200 rounded-2xl lg:rounded-[40px] p-8 text-center">
+                <FileText className="w-12 lg:w-20 h-12 lg:h-20 mb-4 opacity-20" />
+                <p className="font-semibold text-base lg:text-lg">Upload a PDF to see the score</p>
+                <p className="text-xs lg:text-sm opacity-60">Guitar tabs or sheet music supported</p>
+              </div>
+            )}
+          </div>
+        </div>
 
-          <section className="border border-[#141414] p-6 bg-white/50 backdrop-blur-sm">
-            <h2 className="font-serif italic text-lg mb-4">02. Playback Config</h2>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
+        {/* Controls & Player */}
+        <div className={cn(
+          "w-full lg:w-[450px] bg-white flex flex-col shadow-2xl z-10 order-1 lg:order-none",
+          isSwapped ? "lg:border-r border-slate-200" : "lg:border-l border-slate-200"
+        )}>
+          <div className="p-6 lg:p-8 space-y-6 lg:space-y-8 flex-1 overflow-y-auto">
+            {/* Instrument Selection */}
+            <section>
+              <h3 className="text-[10px] lg:text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">01. Select Instrument</h3>
+              <div className="grid grid-cols-2 gap-2 lg:gap-3">
                 {INSTRUMENTS.map((inst) => (
                   <button
                     key={inst.value}
                     onClick={() => setInstrument(inst.value)}
                     className={cn(
-                      "flex items-center gap-2 p-2 border border-[#141414]/10 text-[10px] uppercase font-mono transition-all",
-                      instrument === inst.value ? "bg-[#141414] text-[#E4E3E0]" : "hover:bg-white"
+                      "flex flex-col items-start gap-2 p-3 lg:p-4 rounded-xl lg:rounded-2xl border-2 transition-all text-left",
+                      instrument === inst.value 
+                        ? "border-indigo-600 bg-indigo-50/50 ring-4 ring-indigo-50" 
+                        : "border-slate-100 hover:border-slate-200 hover:bg-slate-50"
                     )}
                   >
-                    {inst.icon}
-                    {inst.label}
+                    <div className={cn(
+                      "w-6 lg:w-8 h-6 lg:h-8 rounded-lg flex items-center justify-center",
+                      instrument === inst.value ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
+                    )}>
+                      {React.cloneElement(inst.icon as React.ReactElement, { className: "w-3 lg:w-4 h-3 lg:h-4" })}
+                    </div>
+                    <span className={cn(
+                      "text-[9px] lg:text-[11px] font-bold uppercase tracking-tight",
+                      instrument === inst.value ? "text-indigo-900" : "text-slate-600"
+                    )}>
+                      {inst.label}
+                    </span>
                   </button>
                 ))}
               </div>
-            </div>
-          </section>
-        </div>
+            </section>
 
-        {/* Right Column: Visualization & Data */}
-        <div className="lg:col-span-8 space-y-8">
-          <section className="border border-[#141414] bg-white min-h-[500px] flex flex-col">
-            <div className="border-b border-[#141414] p-4 flex justify-between items-center bg-[#141414] text-[#E4E3E0]">
-              <div className="flex items-center gap-4">
-                <h2 className="font-serif italic text-lg">{score?.title || 'No Score Loaded'}</h2>
-                {score && <span className="text-[10px] font-mono opacity-60">{score.bpm} BPM</span>}
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={isPlaying ? stopPlayback : startPlayback}
-                  disabled={!score}
-                  className="p-2 hover:bg-white/20 rounded-full transition-all disabled:opacity-30"
-                >
-                  {isPlaying ? <Square className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
-                </button>
-              </div>
-            </div>
+            {/* AI Action */}
+            <section>
+              <h3 className="text-[10px] lg:text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">02. AI Transcription</h3>
+              <button
+                onClick={processFile}
+                disabled={!file || isProcessing}
+                className={cn(
+                  "w-full py-3 lg:py-4 rounded-xl lg:rounded-2xl font-bold text-xs lg:text-sm uppercase tracking-widest transition-all flex items-center justify-center gap-3 shadow-lg",
+                  isProcessing 
+                    ? "bg-slate-100 text-slate-400 cursor-not-allowed" 
+                    : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 active:scale-[0.98]"
+                )}
+              >
+                {isProcessing ? (
+                  <>
+                    <Loader2 className="w-4 lg:w-5 h-4 lg:h-5 animate-spin" />
+                    Analyzing...
+                  </>
+                ) : (
+                  <>
+                    <Music className="w-4 lg:w-5 h-4 lg:h-5" />
+                    Transcribe
+                  </>
+                )}
+              </button>
+              {error && <p className="text-rose-500 text-[9px] lg:text-[10px] mt-3 font-bold uppercase text-center">{error}</p>}
+            </section>
 
-            <div className="flex-1 relative overflow-hidden p-8">
-              {!score ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center opacity-20">
-                  <Music className="w-24 h-24 mb-4" />
-                  <p className="font-mono text-sm uppercase tracking-widest">Awaiting Data Input</p>
-                </div>
-              ) : (
-                <div className="h-full flex flex-col">
-                  {/* Simple Note Visualization */}
-                  <div className="flex-1 border border-[#141414]/10 relative overflow-x-auto">
-                    <div 
-                      className="absolute top-0 bottom-0 w-px bg-red-500 z-10 transition-all duration-50 ease-linear"
-                      style={{ left: `${(currentTime * 50)}px` }}
-                    />
-                    <div className="h-full min-w-[2000px] relative">
-                      {score.notes.map((note, idx) => (
-                        <motion.div
-                          key={idx}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: idx * 0.001 }}
-                          className={cn(
-                            "absolute h-4 rounded-sm border border-[#141414] flex items-center justify-center text-[8px] font-mono transition-colors",
-                            currentTime >= note.time && currentTime <= note.time + note.duration 
-                              ? "bg-[#141414] text-[#E4E3E0]" 
-                              : "bg-white/50"
-                          )}
-                          style={{
-                            left: `${note.time * 50}px`,
-                            top: `${(72 - (note.pitch.charCodeAt(0) + (parseInt(note.pitch.slice(-1)) * 12))) * 8}px`,
-                            width: `${note.duration * 50}px`,
-                          }}
-                        >
-                          {note.pitch}
-                        </motion.div>
-                      ))}
-                    </div>
+            {/* Playback & Visualization */}
+            <section className="flex-1 flex flex-col min-h-0">
+              <h3 className="text-[10px] lg:text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">03. Playback & Data</h3>
+              <div className="flex-1 bg-slate-900 rounded-2xl lg:rounded-[32px] p-4 lg:p-6 flex flex-col shadow-inner overflow-hidden relative min-h-[300px]">
+                {!score ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-slate-700">
+                    <Volume2 className="w-10 lg:w-12 h-10 lg:h-12 mb-2 opacity-20" />
+                    <p className="text-[9px] lg:text-[10px] font-bold uppercase tracking-widest">Awaiting Transcription</p>
                   </div>
-
-                  {/* Data Grid View */}
-                  <div className="mt-8 border-t border-[#141414]">
-                    <div className="grid grid-cols-4 p-2 border-b border-[#141414] bg-[#141414]/5 text-[10px] font-mono uppercase opacity-50">
-                      <span>Pitch</span>
-                      <span>Time (Beats)</span>
-                      <span>Duration</span>
-                      <span>Status</span>
+                ) : (
+                  <div className="flex-1 flex flex-col min-h-0">
+                    {/* Compact Player Controls */}
+                    <div className="flex items-center justify-between mb-4 lg:mb-6">
+                      <div className="flex flex-col">
+                        <span className="text-white font-bold text-xs lg:text-sm truncate max-w-[120px] lg:max-w-[150px]">{score.title}</span>
+                        <span className="text-[8px] lg:text-[9px] text-slate-500 font-mono uppercase">{score.notes.length} Notes</span>
+                      </div>
+                      <button
+                        onClick={isPlaying ? stopPlayback : startPlayback}
+                        className="w-10 lg:w-12 h-10 lg:h-12 bg-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform active:scale-95"
+                      >
+                        {isPlaying ? <Square className="w-4 lg:w-5 h-4 lg:h-5 text-slate-900 fill-current" /> : <Play className="w-4 lg:w-5 h-4 lg:h-5 text-slate-900 fill-current ml-1" />}
+                      </button>
                     </div>
-                    <div className="max-h-[200px] overflow-y-auto font-mono text-[11px]">
-                      {score.notes.slice(0, 50).map((note, idx) => (
+
+                    {/* Compact Visualizer */}
+                    <div className="flex-1 bg-slate-800/50 rounded-xl lg:rounded-2xl border border-white/5 overflow-hidden relative mb-4">
+                      <div 
+                        className="absolute top-0 bottom-0 w-px bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)] z-10"
+                        style={{ left: '50%' }}
+                      />
+                      <div className="h-full relative overflow-hidden">
+                        {score.notes.map((note, idx) => {
+                          const xPos = 50 + (note.time - currentTime) * 100;
+                          if (xPos < -100 || xPos > 500) return null;
+                          return (
+                            <motion.div
+                              key={idx}
+                              className={cn(
+                                "absolute h-1.5 lg:h-2 rounded-full border transition-all duration-200",
+                                currentTime >= note.time && currentTime <= note.time + note.duration 
+                                  ? "bg-indigo-400 border-indigo-300 shadow-[0_0_15px_rgba(129,140,248,0.5)]" 
+                                  : "bg-slate-700 border-slate-600 opacity-40"
+                              )}
+                              style={{
+                                left: `${xPos}px`,
+                                top: `${(72 - (note.pitch.charCodeAt(0) + (parseInt(note.pitch.slice(-1)) * 12))) * 3 + 80}px`,
+                                width: `${note.duration * 100}px`,
+                              }}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Mini Data Feed */}
+                    <div className="h-20 lg:h-24 bg-black/20 rounded-xl p-3 font-mono text-[8px] lg:text-[9px] overflow-y-auto space-y-1 custom-scrollbar">
+                      {score.notes.map((note, idx) => (
                         <div key={idx} className={cn(
-                          "grid grid-cols-4 p-2 border-b border-[#141414]/5 transition-colors",
-                          currentTime >= note.time && currentTime <= note.time + note.duration && "bg-[#141414] text-[#E4E3E0]"
+                          "flex justify-between px-2 py-1 rounded transition-colors",
+                          currentTime >= note.time && currentTime <= note.time + note.duration 
+                            ? "bg-indigo-500/20 text-indigo-300" 
+                            : "text-slate-600"
                         )}>
                           <span>{note.pitch}</span>
-                          <span>{note.time.toFixed(2)}</span>
-                          <span>{note.duration.toFixed(2)}</span>
-                          <span className="text-[9px] opacity-50">
-                            {currentTime > note.time + note.duration ? 'PAST' : currentTime > note.time ? 'ACTIVE' : 'PENDING'}
-                          </span>
+                          <span>T: {note.time.toFixed(2)}</span>
+                          <span>D: {note.duration.toFixed(2)}</span>
                         </div>
                       ))}
-                      {score.notes.length > 50 && (
-                        <div className="p-4 text-center text-[10px] opacity-40 uppercase">
-                          + {score.notes.length - 50} more notes
-                        </div>
-                      )}
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            </section>
+          </div>
+
+          <footer className="p-6 lg:p-8 border-t border-slate-100 bg-slate-50/50">
+            <div className="flex justify-between items-center opacity-40 font-bold text-[8px] lg:text-[9px] uppercase tracking-widest text-slate-500">
+              <span>v1.3.0-Responsive</span>
+              <span>© 2026 PlayPDF</span>
             </div>
-          </section>
+          </footer>
         </div>
       </main>
-
-      {/* Footer Info */}
-      <footer className="border-t border-[#141414] p-6 mt-12 flex justify-between items-center opacity-50 font-mono text-[10px] uppercase tracking-widest">
-        <div>System Version: 1.0.4-Stable</div>
-        <div>Powered by Gemini 3.1 Pro & Soundfont Engine</div>
-        <div>© 2026 TabReader AI</div>
-      </footer>
     </div>
   );
 }
